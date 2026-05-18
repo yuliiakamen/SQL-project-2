@@ -38,7 +38,7 @@ FROM deduped_ads
 --ORDER BY cac ASC
 
 --перевірка чи значення total_spend помітно менше за результат простого SUM(spend)  через усунення кумулятивного ефекту.
-SELECT SUM(spend)  FROM `skelar-task-1-496711.marketing_ads_raw.marketing_ads_raw` 
+--SELECT SUM(spend)  FROM `skelar-task-1-496711.marketing_ads_raw.marketing_ads_raw` 
 --7953901.82 vs 35747048.367899932  
 
 
