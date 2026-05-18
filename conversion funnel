@@ -1,0 +1,50 @@
+-- CTE для очищення кумулятивних даних від дублів
+-- Залишаємо лише один найновіший рядок для кожної унікальної комбінації оголошення та дати
+WITH deduped_ads AS (
+  SELECT
+    source,
+    clicks,
+    installs,
+    registrations
+  FROM (
+    SELECT
+      source,
+      clicks,
+      installs,
+      registrations,
+      -- ROW_NUMBER відсікає старі логи, сортуючи записи від найновішого до найстарішого
+      -- Партиціонуємо по ad_id та date, бо кумулятивність оновлюється в межах одного дня для кожного оголошення
+      ROW_NUMBER() OVER (
+        PARTITION BY ad_id, date 
+        ORDER BY timestamp DESC
+      ) AS rn
+    FROM `skelar-task-1-496711.marketing_ads_raw.marketing_ads_raw`
+  )
+  -- Фільтр rn = 1 залишає тільки актуальний фінальний стан даних за кожен день
+  WHERE rn = 1
+),
+
+-- CTE для підрахунку загальних сум метрик воронки по кожному каналу
+funnel_totals AS (
+  SELECT
+    source,
+    SUM(clicks) AS total_clicks,
+    SUM(installs) AS total_installs,
+    SUM(registrations) AS total_registrations
+  FROM deduped_ads
+  GROUP BY 1
+)
+
+SELECT
+  source,
+  total_clicks,
+  total_installs,
+  total_registrations,
+  -- Розраховуємо конверсію з кліку у встановлення (етап магазину додатків)
+  -- NULLIF захищає від ділення на нуль, якщо кліків не було
+  ROUND((total_installs / NULLIF(total_clicks, 0)) * 100, 2) AS cr_click_to_install,
+  -- Розраховуємо конверсію зі встановлення в реєстрацію (етап онбордингу додатка)
+  -- NULLIF захищає від ділення на нуль, якщо інсталів не було
+  ROUND((total_registrations / NULLIF(total_installs, 0)) * 100, 2) AS cr_install_to_reg
+FROM funnel_totals
+ORDER BY source
