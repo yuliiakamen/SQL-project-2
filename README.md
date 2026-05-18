@@ -1,43 +1,7 @@
--- КРОК 1 – Дедублікація
--- CTE для дедуплікації кумулятивних даних
--- Залишаємо лише один найновіший рядок для кожної унікальної комбінації оголошення та дати
-WITH deduped_ads AS (
-  SELECT
-    source,
-    spend,
-    registrations
-  FROM (
-    SELECT
-      source,
-      spend,
-      registrations,
-      -- ROW_NUMBER відсікає старі логи, сортуючи записи від найновішого до найстарішого.
-      -- Партиціонуємо по ad_id та date, бо кумулятивність оновлюється в межах одного дня для кожного оголошення.
-      ROW_NUMBER() OVER (
-        PARTITION BY ad_id, date 
-        ORDER BY timestamp DESC
-      ) AS rn
-    FROM `skelar-task-1-496711.marketing_ads_raw.marketing_ads_raw`
-  )
-  -- Фільтр залишає тільки фінальний (актуальний) стан даних за кожен день
-  WHERE rn = 1
-)
+Answer the following questions:
 
-SELECT
-  --source AS marketing_channel,
-  -- SUM(spend) після дедуплікації дає коректну суму чистих витрат без завищення
-  ROUND(SUM(spend), 2) AS total_spend,
-  -- SUM(registrations) рахує точну кількість залучених користувачів
-  SUM(registrations) AS total_registrations,
-  -- NULLIF захищає від помилки ділення на нуль (Division by zero), якщо канал не приніс реєстрацій
-  ROUND(SUM(spend) / NULLIF(SUM(registrations), 0), 2) AS cac
-FROM deduped_ads
--- Групуємо по першій колонці (source), щоб порахувати метрики для кожного каналу окремо
---GROUP BY 1
--- Сортуємо від найменшого CAC до найбільшого, щоб одразу бачити найефективніші канали
---ORDER BY cac ASC
-
---перевірка чи значення total_spend помітно менше за результат простого SUM(spend)  через усунення кумулятивного ефекту.
--- SELECT SUM(spend)  FROM `skelar-task-1-496711.marketing_ads_raw.marketing_ads_raw` 
---7953901.82 vs 35747048.367899932  
-
+Which channel has the lowest CAC?
+Where do the biggest drops in the funnel occur — at which stage is the conversion rate the worst?
+META spends ~3.3x more than TikTok and Google. Is this investment justified from a CAC perspective?
+Bonus: If the LTV from the previous session was: TikTok = $8.50, META = $6.20, Google = $12.40 — calculate the LTV/CAC ratio for each channel. Which channel is the most profitable?
+Bonus: Break down CAC by month — did the efficiency of the channels change over the course of the campaign?
