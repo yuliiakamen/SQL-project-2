@@ -1,0 +1,62 @@
+-- КРОК 3 - Метрики по каналу за весь період
+
+-- CTE для очищення кумулятивних даних від дублів
+-- Залишаємо лише один найновіший рядок для кожної унікальної комбінації оголошення та дати
+WITH deduped_ads AS (
+  SELECT
+    source,
+    spend,
+    impressions,
+    clicks,
+    installs,
+    registrations
+  FROM (
+    SELECT
+      source,
+      spend,
+      impressions,
+      clicks,
+      installs,
+      registrations,
+      -- ROW_NUMBER відсікає старі логи, сортуючи записи від найновішого до найстарішого
+      -- Партиціонуємо по ad_id та date, бо кумулятивність оновлюється в межах одного дня для кожного оголошення
+      ROW_NUMBER() OVER (
+        PARTITION BY ad_id, date 
+        ORDER BY timestamp DESC
+      ) AS rn
+    FROM `skelar-task-1-496711.marketing_ads_raw.marketing_ads_raw`
+  )
+  -- Фільтр залишає тільки фінальний (актуальний) стан даних за кожен день
+  WHERE rn = 1
+),
+
+-- CTE для розрахунку загальних сум за весь період по кожному каналу
+-- Агрегація потрібна перед розрахунком відносних метрик (CTR, CR, CAC)
+channel_totals AS (
+  SELECT
+    source,
+    SUM(spend) AS total_spend,
+    SUM(impressions) AS total_impressions,
+    SUM(clicks) AS total_clicks,
+    SUM(installs) AS total_installs,
+    SUM(registrations) AS total_registrations
+  FROM deduped_ads
+  GROUP BY 1
+)
+
+SELECT
+  source,
+  ROUND(total_spend, 2) AS total_spend,
+  -- NULLIF захищає від ділення на нуль, якщо у каналу 0 показів
+  ROUND((total_spend / NULLIF(total_impressions, 0)) * 1000, 2) AS cpm,
+  -- Множимо на 100, щоб отримати значення у відсотках (%)
+  ROUND((total_clicks / NULLIF(total_impressions, 0)) * 100, 2) AS ctr,
+  -- CR з кліку у встановлення
+  ROUND((total_installs / NULLIF(total_clicks, 0)) * 100, 2) AS cr_click_to_install,
+  -- CR з встановлення у реєстрацію
+  ROUND((total_registrations / NULLIF(total_installs, 0)) * 100, 2) AS cr_install_to_reg,
+  -- CAC (вартість залучення одного зареєстрованого користувача)
+  ROUND(total_spend / NULLIF(total_registrations, 0), 2) AS cac
+FROM channel_totals
+-- Сортуємо від найбільших витрат до найменших, щоб першими бачити пріоритетні канали
+ORDER BY total_spend DESC
