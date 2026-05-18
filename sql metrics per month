@@ -1,0 +1,40 @@
+-- CTE для очищення кумулятивних даних від дублів
+-- Залишаємо лише один найновіший рядок для кожної унікальної комбінації оголошення та дати
+WITH deduped_ads AS (
+  SELECT
+    source,
+    -- DATE_TRUNC зводить дату події до першого числа місяця для помісячного групування
+    DATE_TRUNC(date, MONTH) AS marketing_month,
+    spend,
+    registrations
+  FROM (
+    SELECT
+      source,
+      date,
+      spend,
+      registrations,
+      -- ROW_NUMBER відсікає старі логи, сортуючи записи від найновішого до найстарішого
+      -- Партиціонуємо по ad_id та date, бо кумулятивність оновлюється в межах одного дня для кожного оголошення
+      ROW_NUMBER() OVER (
+        PARTITION BY ad_id, date 
+        ORDER BY timestamp DESC
+      ) AS rn
+    FROM `skelar-task-1-496711.marketing_ads_raw.marketing_ads_raw`
+  )
+  -- Фільтр rn = 1 залишає тільки актуальний фінальний стан даних за кожен день
+  WHERE rn = 1
+)
+
+SELECT
+  -- LOWER(source) приводить назву каналу до нижнього регістру, щоб уникнути роздвоєння рядків через різний регістр букв
+  LOWER(source) AS source,
+  marketing_month,
+  ROUND(SUM(spend), 2) AS monthly_spend,
+  SUM(registrations) AS monthly_registrations,
+  -- Розраховуємо CAC для конкретного місяця
+  -- NULLIF замінює 0 на NULL у знаменнику, захищаючи запит від помилки ділення на нуль
+  ROUND(SUM(spend) / NULLIF(SUM(registrations), 0), 2) AS monthly_cac
+FROM deduped_ads
+GROUP BY 1, 2
+-- Сортуємо спочатку за маркетинговим каналом, а потім хронологічно за місяцями
+ORDER BY source, marketing_month
