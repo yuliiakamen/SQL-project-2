@@ -1,0 +1,56 @@
+
+-- КРОК 2 – Денні метрики
+
+-- CTE для очищення кумулятивних даних від дублів
+-- Залишаємо лише один найновіший рядок для кожної унікальної комбінації оголошення та дати
+WITH deduped_ads AS (
+  SELECT
+    source,
+    date,
+    spend,
+    impressions,
+    clicks,
+    installs,
+    registrations
+  FROM (
+    SELECT
+      source,
+      date,
+      spend,
+      impressions,
+      clicks,
+      installs,
+      registrations,
+      -- ROW_NUMBER відсікає старі логи, сортуючи записи від найновішого до найстарішого
+      -- Партиціонуємо по ad_id та date, бо кумулятивність оновлюється в межах одного дня для кожного оголошення
+      ROW_NUMBER() OVER (
+        PARTITION BY ad_id, date 
+        ORDER BY timestamp DESC
+      ) AS rn
+    FROM `skelar-task-1-496711.marketing_ads_raw.marketing_ads_raw`
+  )
+  -- Фільтр залишає тільки фінальний (актуальний) стан даних за кожен день
+  WHERE rn = 1
+)
+
+SELECT
+  source,
+  date,
+  -- SUM(spend) після дедублікації дає коректну суму чистих витрат за день без завищення
+  ROUND(SUM(spend), 2) AS daily_spend,
+  -- SUM рахує чисту суму показів за день
+  SUM(impressions) AS daily_impressions,
+  -- SUM рахує чисту суму кліків за день
+  SUM(clicks) AS daily_clicks,
+  -- SUM рахує чисту суму встановлень за день
+  SUM(installs) AS daily_installs,
+  -- SUM рахує чисту суму реєстрацій за день
+  SUM(registrations) AS daily_registrations
+FROM deduped_ads
+-- Групуємо по джерелу та даті, щоб схлопнути окремі оголошення (ad_id) до рівня каналу
+GROUP BY 1, 2
+-- Сортуємо за джерелом та хронологічно за датою
+ORDER BY source, date
+
+
+
